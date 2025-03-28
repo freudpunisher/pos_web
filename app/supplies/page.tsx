@@ -42,7 +42,7 @@ interface Supply {
 
     last_name: string };
    
-  createdAt: string;
+  created_at: string;
   details?: {
     id: number;
     produitId: string;
@@ -62,6 +62,7 @@ const AddProductToSupplyDialog = ({
   onProductAdded: () => void;
   products: { id: string; name: string }[];
 }) => {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     produitId: "",
     quantity: "",
@@ -71,13 +72,15 @@ const AddProductToSupplyDialog = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch(`/api/supplies/${supplyId}/details`, {
+      const response = await fetch(`/api/supplyDetails`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          supplyId: supplyId,
           produitId: parseInt(formData.produitId),
           quantity: parseFloat(formData.quantity),
           price_per_unit: parseFloat(formData.price_per_unit),
+          total_price: parseFloat(formData.quantity) * parseFloat(formData.price_per_unit),
         }),
       });
 
@@ -87,13 +90,21 @@ const AddProductToSupplyDialog = ({
 
       toast.success("Product added to supply successfully");
       onProductAdded();
+      setFormData({
+        produitId: "",
+        quantity: "",
+        price_per_unit: "",
+
+      })
+      setIsDialogOpen(false);
+
     } catch (error) {
       toast.error("Failed to add product to supply");
     }
   };
 
   return (
-    <Dialog>
+    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" className="flex items-center gap-2">
           <Plus className="h-4 w-4" /> Add Product
@@ -238,13 +249,13 @@ export default function SuppliesPage() {
 
     if (filters.startDate) {
       result = result.filter(supply => 
-        new Date(supply.createdAt) >= new Date(filters.startDate)
+        new Date(supply.created_at) >= new Date(filters.startDate)
       );
     }
 
     if (filters.endDate) {
       result = result.filter(supply => 
-        new Date(supply.createdAt) <= new Date(filters.endDate)
+        new Date(supply.created_at) <= new Date(filters.endDate)
       );
     }
 
@@ -387,7 +398,7 @@ export default function SuppliesPage() {
                       <TableCell>{supply.id}</TableCell>
                       <TableCell>{supply.reference}</TableCell>
                       <TableCell>{supply.fournisseur?.first_name + " " + supply.fournisseur?.last_name || "N/A"}</TableCell>
-                      <TableCell>{new Date(supply.createdAt).toLocaleDateString()}</TableCell>
+                      <TableCell>{new Date(supply.created_at).toLocaleDateString()}</TableCell>
                       <TableCell>{supply.details?.length || 0}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">

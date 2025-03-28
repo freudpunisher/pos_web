@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { supplyId, produitId, quantity, price_per_unit, total_price } = body;
     
-    if (!supplyId || !produitId || quantity === undefined || price_per_unit === undefined || total_price === undefined) {
+    if (!supplyId || !produitId || quantity === undefined || price_per_unit === undefined ) {
       return NextResponse.json(
         { error: "supplyId, produitId, quantity, price_per_unit, and total_price are required" },
         { status: 400 }
