@@ -1,65 +1,80 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
-import { 
-  Card, 
-  CardContent, 
-  CardHeader, 
-  CardTitle 
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Plus, Trash2, Edit, Eye } from "lucide-react";
+import { Plus, Trash2, Eye } from "lucide-react";
 import Navbar from "../components/Navbar";
 
-// --- Create Supply Dialog with Auto-generated Reference and Product Autocomplete ---
-const CreateSupplyDialog = () => {
-  // Auto-generate a reference once when the dialog mounts.
-  // You could enhance this to be more unique as needed.
-  const generatedReference = useMemo(() => {
-    return `SUP-${Date.now()}`;
-  }, []);
+interface Supply {
+  id: number;
+  reference: string;
+  fournisseur?: { name: string };
+  createdAt: string;
+  details?: {
+    id: number;
+    produitId: string;
+    quantity: string;
+    price_per_unit: string;
+    total_price: string;
+    produit?: { name: string };
+  }[];
+}
+
+// --- Create Supply Dialog ---
+// This dialog fetches suppliers and products for selection, then on form submission
+// it creates a new supply and its details via the /api/supplies endpoint.
+const CreateSupplyDialog = ({ onSupplyCreated }: { onSupplyCreated: () => void }) => {
+  // Auto-generate a unique reference when the dialog mounts.
+  const generatedReference = useMemo(() => `SUP-${Date.now()}`, []);
 
   const [formData, setFormData] = useState({
     fournisseurId: "",
     reference: generatedReference,
-    details: [
-      { produitId: "", quantity: "", price_per_unit: "" }
-    ]
+    details: [{ produitId: "", quantity: "", price_per_unit: "" }],
   });
 
-  // State to hold product options fetched from API/produits
+  // Fetch products for autocomplete.
   const [products, setProducts] = useState<{ id: string; name: string }[]>([]);
-
-  // Fetch products once on mount
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         const res = await fetch("/api/produits");
         const data = await res.json();
-        setProducts(data);
+        // Map products to desired shape (assuming API returns { id, nom, ... })
+        const mapped = data.map((prod: any) => ({
+          id: prod.id.toString(),
+          name: prod.nom,
+        }));
+        setProducts(mapped);
       } catch (error) {
         console.error("Failed to fetch products", error);
       }
@@ -67,21 +82,53 @@ const CreateSupplyDialog = () => {
     fetchProducts();
   }, []);
 
+  // Fetch suppliers for selection.
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    const fetchSuppliers = async () => {
+      try {
+        const res = await fetch("/api/fournisseurs");
+        const data = await res.json();
+        // Map suppliers (assuming API returns { id, first_name, last_name, ... })
+        const mapped = data.map((s: any) => ({
+          id: s.id.toString(),
+          name: `${s.first_name} ${s.last_name}`,
+        }));
+        setSuppliers(mapped);
+      } catch (error) {
+        console.error("Failed to fetch suppliers", error);
+      }
+    };
+    fetchSuppliers();
+  }, []);
+
+  // Handle form submission: create supply (and supply details within a transaction).
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const response = await fetch("/api/supplies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          fournisseurId: parseInt(formData.fournisseurId),
+          reference: formData.reference,
+          details: formData.details.map((detail) => ({
+            produitId: parseInt(detail.produitId),
+            quantity: parseFloat(detail.quantity),
+            price_per_unit: parseFloat(detail.price_per_unit),
+          })),
+        }),
       });
-
-      if (response.ok) {
-        // Handle successful creation (e.g., refresh list, show toast)
-        console.log("Supply created successfully");
-      } else {
-        console.error("Failed to create supply");
+      if (!response.ok) {
+        throw new Error("Failed to create supply");
       }
+      // On success, reset form and notify parent to refresh supplies.
+      setFormData({
+        fournisseurId: "",
+        reference: `SUP-${Date.now()}`,
+        details: [{ produitId: "", quantity: "", price_per_unit: "" }],
+      });
+      onSupplyCreated();
     } catch (error) {
       console.error("Failed to create supply", error);
     }
@@ -90,10 +137,7 @@ const CreateSupplyDialog = () => {
   const addDetailRow = () => {
     setFormData((prev) => ({
       ...prev,
-      details: [
-        ...prev.details,
-        { produitId: "", quantity: "", price_per_unit: "" }
-      ]
+      details: [...prev.details, { produitId: "", quantity: "", price_per_unit: "" }],
     }));
   };
 
@@ -111,25 +155,28 @@ const CreateSupplyDialog = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label>Supplier ID</label>
-              <Input
-                type="text"
+              <label>Supplier</label>
+              <Select
                 value={formData.fournisseurId}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    fournisseurId: e.target.value
-                  }))
+                onValueChange={(value) =>
+                  setFormData((prev) => ({ ...prev, fournisseurId: value }))
                 }
-              />
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Supplier" />
+                </SelectTrigger>
+                <SelectContent>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label>Reference</label>
-              <Input
-                type="text"
-                value={formData.reference}
-                readOnly // auto-generated, not editable
-              />
+              <Input type="text" value={formData.reference} readOnly />
             </div>
           </div>
 
@@ -139,7 +186,6 @@ const CreateSupplyDialog = () => {
               <div key={index} className="grid grid-cols-3 gap-4">
                 <div>
                   <label>Product</label>
-                  {/* Using a datalist for autocomplete */}
                   <Input
                     list="products-list"
                     placeholder="Select Product"
@@ -206,9 +252,10 @@ const CreateSupplyDialog = () => {
 };
 
 // --- Supply Details Row Component ---
+// Renders a card below a supply row showing its details.
 const SupplyDetailsRow = ({
   supply,
-  onAddProduct
+  onAddProduct,
 }: {
   supply: Supply;
   onAddProduct: (supplyId: number) => void;
@@ -220,11 +267,7 @@ const SupplyDetailsRow = ({
           <CardHeader>
             <CardTitle className="flex justify-between items-center">
               Supply Details
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onAddProduct(supply.id)}
-              >
+              <Button variant="outline" size="sm" onClick={() => onAddProduct(supply.id)}>
                 <Plus className="mr-2 h-4 w-4" /> Add Product
               </Button>
             </CardTitle>
@@ -252,9 +295,11 @@ const SupplyDetailsRow = ({
                     <TableCell>
                       <div className="flex gap-2">
                         <Button variant="outline" size="sm">
-                          <Edit className="h-4 w-4" />
+                          {/* Implement Edit functionality if needed */}
+                          Edit
                         </Button>
                         <Button variant="destructive" size="sm">
+                          {/* Implement Delete functionality if needed */}
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -271,58 +316,36 @@ const SupplyDetailsRow = ({
 };
 
 // --- Main Supplies Page ---
-interface Supply {
-  id: number;
-  reference: string;
-  fournisseur?: { name: string };
-  createdAt: string;
-  details?: {
-    id: number;
-    produitId: string;
-    quantity: string;
-    price_per_unit: string;
-    total_price: string;
-    produit?: { name: string };
-  }[];
-}
-
 export default function SuppliesPage() {
   const [supplies, setSupplies] = useState<Supply[]>([]);
   const [expandedSupplyId, setExpandedSupplyId] = useState<number | null>(null);
-  const [filters, setFilters] = useState({
-    fournisseurId: "",
-    minDate: "",
-    maxDate: ""
-  });
   const [pagination, setPagination] = useState({
     page: 1,
-    pageSize: 10
+    pageSize: 10,
   });
 
-  // Fetch supplies
+  // Fetch supplies from API.
+  const fetchSupplies = async () => {
+    try {
+      const response = await fetch("/api/supplies");
+      const data = await response.json();
+      setSupplies(data);
+    } catch (error) {
+      console.error("Failed to fetch supplies", error);
+    }
+  };
+
   useEffect(() => {
-    const fetchSupplies = async () => {
-      try {
-        const response = await fetch("/api/supplies");
-        const data = await response.json();
-        setSupplies(data);
-      } catch (error) {
-        console.error("Failed to fetch supplies", error);
-      }
-    };
     fetchSupplies();
   }, []);
 
   const handleDeleteSupply = async (supplyId: number) => {
     try {
       const response = await fetch(`/api/supplies/${supplyId}`, {
-        method: "DELETE"
+        method: "DELETE",
       });
-
       if (response.ok) {
-        setSupplies((prev) =>
-          prev.filter((supply) => supply.id !== supplyId)
-        );
+        setSupplies((prev) => prev.filter((supply) => supply.id !== supplyId));
       }
     } catch (error) {
       console.error("Failed to delete supply", error);
@@ -331,135 +354,91 @@ export default function SuppliesPage() {
 
   return (
     <div className="min-h-screen bg-gray-100 space-y-6">
-       <Navbar />
-       <div className="container mx-auto p-4">
+      <Navbar />
+      <div className="container mx-auto p-4">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Supplies Management</h1>
+          <CreateSupplyDialog onSupplyCreated={fetchSupplies} />
+        </div>
 
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Supplies Management</h1>
-        <CreateSupplyDialog />
-      </div>
+        {/* Supplies Table */}
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>ID</TableHead>
+              <TableHead>Reference</TableHead>
+              <TableHead>Supplier</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Total Products</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {supplies.map((supply) => (
+              <React.Fragment key={supply.id}>
+                <TableRow >
+                  <TableCell>{supply.id}</TableCell>
+                  <TableCell>{supply.reference}</TableCell>
+                  <TableCell>{supply.fournisseur?.name || "N/A"}</TableCell>
+                  <TableCell>{new Date(supply.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell>{supply.details?.length || 0}</TableCell>
+                  <TableCell>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setExpandedSupplyId(expandedSupplyId === supply.id ?supply.id : null)
+                        }
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteSupply(supply.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+                {expandedSupplyId === supply.id && (
+                  <SupplyDetailsRow
+                    supply={supply}
+                    key={`${supply.id}-details`} // Unique key
+                    onAddProduct={(supplyId: number) =>
+                      console.log("Implement add product logic for supply", supplyId)
+                    }
+                  />
+                )}
+              </React.Fragment>
+            ))}
+          </TableBody>
+        </Table>
 
-      {/* Filters */}
-      <div className="grid grid-cols-3 gap-4">
-        <Select
-          value={filters.fournisseurId}
-          onValueChange={(value) =>
-            setFilters((prev) => ({ ...prev, fournisseurId: value }))
-          }
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select Supplier" />
-          </SelectTrigger>
-          <SelectContent>
-            {/* Populate with actual supplier options */}
-            <SelectItem value="1">Supplier 1</SelectItem>
-            <SelectItem value="2">Supplier 2</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Input
-          type="date"
-          value={filters.minDate}
-          onChange={(e) =>
-            setFilters((prev) => ({ ...prev, minDate: e.target.value }))
-          }
-          placeholder="Min Date"
-        />
-
-        <Input
-          type="date"
-          value={filters.maxDate}
-          onChange={(e) =>
-            setFilters((prev) => ({ ...prev, maxDate: e.target.value }))
-          }
-          placeholder="Max Date"
-        />
-      </div>
-
-      {/* Supplies Table */}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>ID</TableHead>
-            <TableHead>Reference</TableHead>
-            <TableHead>Supplier</TableHead>
-            <TableHead>Date</TableHead>
-            <TableHead>Total Products</TableHead>
-            <TableHead>Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {supplies.map((supply) => (
-            <React.Fragment key={supply.id}>
-              <TableRow>
-                <TableCell>{supply.id}</TableCell>
-                <TableCell>{supply.reference}</TableCell>
-                <TableCell>
-                  {supply.fournisseur?.name || "N/A"}
-                </TableCell>
-                <TableCell>
-                  {new Date(supply.createdAt).toLocaleDateString()}
-                </TableCell>
-                <TableCell>{supply.details?.length || 0}</TableCell>
-                <TableCell>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        setExpandedSupplyId(
-                          expandedSupplyId === supply.id ? null : supply.id
-                        )
-                      }
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDeleteSupply(supply.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-              {expandedSupplyId === supply.id && (
-                <SupplyDetailsRow
-                  supply={supply}
-                  onAddProduct={(supplyId: number) => {
-                    // Implement logic to add product to supply
-                    console.log("Add product to supply", supplyId);
-                  }}
-                />
-              )}
-            </React.Fragment>
-          ))}
-        </TableBody>
-      </Table>
-
-      {/* Pagination */}
-      <div className="flex justify-between items-center mt-4">
-        <Button
-          variant="outline"
-          disabled={pagination.page === 1}
-          onClick={() =>
-            setPagination((prev) => ({ ...prev, page: prev.page - 1 }))
-          }
-        >
-          Previous
-        </Button>
-        <span>Page {pagination.page}</span>
-        <Button
-          variant="outline"
-          onClick={() =>
-            setPagination((prev) => ({ ...prev, page: prev.page + 1 }))
-          }
-        >
-          Next
-        </Button>
+        {/* Pagination Controls */}
+        <div className="flex justify-between items-center mt-4">
+          <Button
+            variant="outline"
+            disabled={pagination.page === 1}
+            onClick={() =>
+              setPagination((prev) => ({ ...prev, page: prev.page - 1 }))
+            }
+          >
+            Previous
+          </Button>
+          <span>Page {pagination.page}</span>
+          <Button
+            variant="outline"
+            onClick={() =>
+              setPagination((prev) => ({ ...prev, page: prev.page + 1 }))
+            }
+          >
+            Next
+          </Button>
+        </div>
       </div>
     </div>
-       </div>
   );
 }

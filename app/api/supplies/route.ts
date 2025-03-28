@@ -60,8 +60,7 @@ export async function POST(request: Request) {
 // GET - Get all supplies with details
 export async function GET() {
     try {
-      const allSupplies = await db
-        .select({
+      const allSupplies = await db.select({
           id: supplies.id,
           reference: supplies.reference,
           supply_date: supplies.supply_date,
@@ -71,8 +70,8 @@ export async function GET() {
             supplyId: supplyDetails.supplyId,
             produitId: supplyDetails.produitId,
             quantity: supplyDetails.quantity,
-            price_per_unit: supplyDetails.price_per_unit,
-            total_price: supplyDetails.total_price,
+            // price_per_unit: supplyDetails.price_per_unit,
+            // total_price: supplyDetails.total_price,
           },
           fournisseur: {
             id: fournisseurs.id,

@@ -19,7 +19,13 @@ const setupMenuItems = [
     href: "/setup/notifications",
   },
   { name: "Famille", icon: FolderTree, description: "Manage product families", href: "/parametrage/familles" },
-  { name: "Unité de Mesure", icon: Ruler, description: "Manage measurement units", href: "/parametrage/unite" },
+  { name: "Unité de Mesure", icon: Ruler,  href: "/parametrage/unite" },
+  {
+    name: "Fournisseurs",
+    icon: Bell,
+    // description: "Manage your notification preferences",
+    href: "/parametrage/fournisseurs",
+  },
 ]
 
 export default function SetupMenu() {
